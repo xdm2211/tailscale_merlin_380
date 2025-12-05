@@ -1,5 +1,4 @@
-
-# Tailscale - 华硕路由器插件 - 适配 Koolshare Merlin 380固件
+# Tailscale - 华硕路由器插件 - 适配 Koolshare 梅林380固件
 
 ## 简介
 
@@ -33,4 +32,3 @@ Tailscale 主要特性和优势：
 - 网件系列：`R6300V2` `R6400` `R6900` `R7000` `R8000` `R8500`
 - Linksys EA系列：`EA6200` `EA6400` `EA6500v2` `EA6700` `EA6900`
 - 华为：`ws880`
-

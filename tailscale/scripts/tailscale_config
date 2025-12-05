@@ -278,13 +278,13 @@ start_ts() {
   need_dirs
   get_conf
 
- check_binaries || return 1
+  check_binaries || return 1
 
   if ! pidof tailscaled >/dev/null 2>&1; then
     echo_date "启动 tailscaled ..."
-#	GOGC=20 GOMEMLIMIT=64MiB \
-	TS_DEBUG_MEMORY=1 TS_LOG_TARGET=stderr \
-    "${TSD}" --state="${STATE}" --statedir="${STATE_DIR}" --socket="${SOCK}" --port=41641 > "${TSDLOG}" 2>&1 &
+    # GOGC=20 GOMEMLIMIT=64MiB \
+    TS_DEBUG_MEMORY=1 TS_LOG_TARGET=stderr \
+      "${TSD}" --state="${STATE}" --statedir="${STATE_DIR}" --socket="${SOCK}" --port=41641 > "${TSDLOG}" 2>&1 &
     sleep 2
   else
     echo_date "tailscaled 已在运行"
@@ -293,12 +293,21 @@ start_ts() {
   UP_FLAGS="$(build_up_flags)"
   echo_date "执行 tailscale up ${UP_FLAGS}"
 
-  # 安全获取明文 tskey-；失败则不带 --authkey
+  # ===== 登录策略：
+  # 1) 若 state 文件存在，优先用 state（不带 --authkey）
+  # 2) 若 state 不存在，再尝试使用 auth-key
   TS_UP_AUTH=""
-  if _AK="$(get_authkey_decoded)"; then
-    TS_UP_AUTH="--authkey=${_AK}"
+  if [ -s "${STATE}" ]; then
+    echo_date "检测到 state 文件存在，使用 node key 自动登录（不使用 auth-key）"
+  else
+    if _AK="$(get_authkey_decoded)"; then
+      TS_UP_AUTH="--authkey=${_AK}"
+      echo_date "state 文件不存在，使用 auth-key 首次登录"
+    else
+      echo_date "state 文件不存在，且未配置有效 auth-key，将尝试默认 tailscale up（可能需要交互登录）"
+    fi
+    unset _AK
   fi
-  unset _AK
 
   if [ -n "${TS_UP_AUTH}" ]; then
     "${TS}" up ${UP_FLAGS} ${TS_UP_AUTH} > "${TSUPLOG}" 2>&1

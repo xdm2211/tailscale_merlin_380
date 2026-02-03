@@ -20,6 +20,7 @@ STATE_DIR="${KSROOT}/configs/tailscale"
 RUN_DIR="/var/run/tailscale"
 SOCK="${RUN_DIR}/tailscaled.sock"
 STATE="${STATE_DIR}/tailscaled.state"
+WD_PIDFILE="${RUN_DIR}/tailscale_watchdog.pid"
 TS="${BIN}/tailscale"
 TSD="${BIN}/tailscaled"
 
@@ -247,6 +248,47 @@ disable_forwarding() {
   disable_forwarding_v6
 }
 
+# ---------- tailscaled 守护进程（基于 dbus 开关） ----------
+
+start_watchdog() {
+  # 已有 watchdog 且仍在运行则跳过
+  if [ -f "$WD_PIDFILE" ]; then
+    pid="$(cat "$WD_PIDFILE" 2>/dev/null)"
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      return 0
+    fi
+  fi
+
+  # 后台跑一个死循环：enable=1 且 tailscaled 消失时自动重启
+  (
+    echo $$ > "$WD_PIDFILE"
+    while :; do
+      sleep 60
+
+      # 每次循环重新读取 dbus 开关，避免配置变化时不生效
+      enable="$(dbus get tailscale_enable 2>/dev/null)"
+      [ "$enable" = "1" ] || break
+
+      if ! pidof tailscaled >/dev/null 2>&1; then
+        echo_date "守护：检测到 tailscaled 退出，执行 stop/start 自动重启..."
+        stop_ts
+        start_ts
+      fi
+    done
+    rm -f "$WD_PIDFILE"
+  ) &
+}
+
+stop_watchdog() {
+  [ -f "$WD_PIDFILE" ] || return 0
+  pid="$(cat "$WD_PIDFILE" 2>/dev/null)"
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" 2>/dev/null
+  fi
+  rm -f "$WD_PIDFILE"
+}
+
+
 check_binaries() {
   COMBINED="${BIN}/tailscale.combined"
 
@@ -371,7 +413,10 @@ apply_ts() {
     else
       start_ts
     fi
+    stop_watchdog
+    start_watchdog
   else
+    stop_watchdog
     stop_ts
   fi
 }
